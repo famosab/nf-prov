@@ -20,6 +20,7 @@ import nextflow.config.ConfigMap
 import nextflow.file.FileHolder
 import nextflow.script.params.FileInParam
 import nextflow.script.params.FileOutParam
+import nextflow.script.ScriptMeta
 
 import java.nio.file.*
 import java.nio.file.attribute.BasicFileAttributes
@@ -359,6 +360,51 @@ class WrrocRenderer implements Renderer {
                 ]
             }
 
+
+        final perTool = nextflowProcesses
+            .collect() { process ->
+                // read in meta.yaml file (nf-core style)
+                def metaYaml = readMetaYaml(process)
+                // get ext properties from process
+                def processorConfig = process.getConfig()
+                def extProperties = processorConfig.ext as Map
+                // use either ext property 'name' or 'name' from meta.yaml
+                def toolNameTask = extProperties.containsKey('name') ? extProperties.get('name') as String : metaYaml.get('name')
+
+                def listOfToolMaps = new ArrayList()
+                metaYaml.get('tools').each { tool -> listOfToolMaps.add( tool as Map ) }
+
+                // get descriptions for all tools used in process
+                // TODO: adapt so that multi-tool-processes get rendered seperately
+                // TODO: extract more information from meta.yaml
+                def softwareMap =  [:]
+                def listOfDescriptions = new ArrayList()
+                listOfToolMaps.each { toolMap ->
+                    toolMap.each { field -> 
+                        def fieldMap = field as Map
+                        field.iterator().each {entry -> 
+                            entry.iterator().each {entryField -> 
+                                def entryFieldMap = entryField.getAt("value") as Map
+                                listOfDescriptions.add(entryFieldMap.getAt("description"))
+                                }
+
+                        }
+                    }
+                    softwareMap[toolNameTask] = listOfDescriptions
+                }
+
+                def createSoftwareFinal = [
+                    "@id"         : toolNameTask,
+                    "@type"       : "SoftwareApplication",
+                    "description" : softwareMap.getAt(toolNameTask).toString()
+                ]
+                return createSoftwareFinal
+            }
+
+        final wfToolDescriptions = perTool.collect()
+
+
+
         final howToSteps = nextflowProcesses
             .collect() { process ->
                 [
@@ -523,7 +569,8 @@ class WrrocRenderer implements Renderer {
                 configFile,
                 *uniqueInputOutputFiles,
                 *propertyValues,
-                license
+                license,
+                *wfToolDescriptions
             ].findAll { it != null }
         ]
 
@@ -696,6 +743,23 @@ class WrrocRenderer implements Renderer {
 
         return publisherID
     }
+
+    /**
+     * Read meta.yaml (nf-core style) file for a given Nextflow process.
+     *
+     * @param   TaskProcessor processor Nextflow process
+     * @return  Yaml as Map
+     */
+    static Map readMetaYaml(TaskProcessor processor) {
+        Path metaFile = ScriptMeta.get(processor.getOwnerScript()).getModuleDir().resolve('meta.yml')
+
+        if (Files.exists(metaFile)) {
+            Yaml yaml = new Yaml()
+            return yaml.load(metaFile.text) as Map
+            }
+
+        return null
+        }
 
 
     /**
