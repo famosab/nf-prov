@@ -555,21 +555,21 @@ class WrrocRenderer implements Renderer {
     def Map<Path, Path> getIntermediateOutputFiles(Set<TaskRun> tasks, Map<Path, Path> workflowOutputs) {
         Map<Path, Path> intermediateInputFiles = [:]
 
-        tasks.collect { task ->
+        tasks.each { task ->
             for (taskOutputParam in task.getOutputsByType(FileOutParam)) {
                 for (taskOutputFile in taskOutputParam.getValue()) {
-                    // Path to file in workdir
-                    Path taskOutputFilePath = Path.of(taskOutputFile.toString())
+                    // Convert taskOutputFile to Path using the same filesystem as workdir
+                    Path sourceFile = workdir.resolve(taskOutputFile.toString()).normalize()
+                    
+                    // Get relative path using workdir as base
+                    Path relativePath = workdir.relativize(sourceFile)
 
-                    if (! workflowOutputs.containsKey(taskOutputFilePath)) {
-
-                        // Find the relative path from workdir
-                        Path relativePath = workdir.relativize(taskOutputFilePath)
-
-                        // Build the new path by combining crateRootDir and the relative part
-                        Path outputFileInCrate = crateRootDir.resolve(workdir.fileName).resolve(relativePath)
-
-                        intermediateInputFiles.put(taskOutputFilePath, outputFileInCrate)
+                    if (!workflowOutputs.containsKey(relativePath)) {
+                        // Construct target path in crate directory
+                        Path outputFileInCrate = crateRootDir.resolve(relativePath)
+                        
+                        Files.createDirectories(outputFileInCrate.parent)
+                        intermediateInputFiles.put(relativePath, outputFileInCrate)
                     }
                 }
             }
