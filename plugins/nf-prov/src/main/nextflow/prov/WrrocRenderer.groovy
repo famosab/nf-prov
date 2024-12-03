@@ -151,6 +151,10 @@ class WrrocRenderer implements Renderer {
         FileWriter configFileWriter = new FileWriter(configFilePath.toString())
         configMap.toConfigObject().writeTo(configFileWriter)
 
+        // get workflow README file and store it in crate
+        Path readmeFilePath = projectDir.resolve("README.md")
+        Files.copy(readmeFilePath, crateRootDir.resolve(readmeFilePath.getFileName()), StandardCopyOption.REPLACE_EXISTING)
+
         // get workflow metadata
         final metadata = session.workflowMetadata
         this.normalizer = new PathNormalizer(metadata)
