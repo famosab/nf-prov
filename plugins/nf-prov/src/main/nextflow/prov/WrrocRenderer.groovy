@@ -409,6 +409,15 @@ class WrrocRenderer implements Renderer {
                 "encodingFormat": "text/plain"
             ]
 
+        final readmeFile = 
+            [
+                "@id"           : "README.md",
+                "@type"         : "File",
+                "name"          : "README.md",
+                "description"   : "This is the README file of the workflow.",
+                "encodingFormat": "text/markdown"
+            ]
+
         final wrroc = [
             "@context": "https://w3id.org/ro/crate/1.1/context",
             "@graph"  : [
@@ -541,6 +550,7 @@ class WrrocRenderer implements Renderer {
                 *controlActions,
                 *createActions,
                 configFile,
+                readmeFile,
                 *uniqueInputOutputFiles,
                 *propertyValues,
                 license
