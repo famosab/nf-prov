@@ -158,7 +158,7 @@ class WrrocRenderer implements Renderer {
 
         // get workflow README file and store it in crate
         boolean readmeExists = false
-        List<String> readmeFiles = ["README.md", "README.txt", "readme.md", "readme.txt"]
+        List<String> readmeFiles = ["README.md", "README.txt", "readme.md", "readme.txt", "Readme.md", "Readme.txt", "README"]
         Path readmeFilePath = null
         String readmeFileName = null
         String readmeFileExtension = null
@@ -472,8 +472,9 @@ class WrrocRenderer implements Renderer {
                     "hasPart"    : [
                         ["@id": metadata.projectName],
                         ["@id": "nextflow.config"],
+                        readmeExists ? ["@id": readmeFile.get("@id")] : null,
                         *uniqueInputOutputFiles.collect(file -> ["@id": file["@id"]])
-                    ],
+                    ].findAll { it != null },
                     "mainEntity" : ["@id": metadata.projectName],
                     "mentions"   : [
                         ["@id": "#${session.uniqueId}"],
