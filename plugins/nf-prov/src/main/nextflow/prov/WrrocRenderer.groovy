@@ -31,6 +31,9 @@ import groovy.json.JsonOutput
 import groovy.transform.CompileStatic
 import nextflow.Session
 import nextflow.processor.TaskRun
+import nextflow.processor.*
+
+import org.yaml.snakeyaml.Yaml
 
 import org.apache.commons.io.FilenameUtils;
 
@@ -417,6 +420,7 @@ class WrrocRenderer implements Renderer {
             .collect() { process ->
                 // read in meta.yaml file (nf-core style)
                 def metaYaml = readMetaYaml(process)
+                println(metaYaml)
                 // get ext properties from process
                 def processorConfig = process.getConfig()
                 def extProperties = processorConfig.ext as Map
@@ -448,8 +452,10 @@ class WrrocRenderer implements Renderer {
                 def createSoftwareFinal = [
                     "@id"         : toolNameTask,
                     "@type"       : "SoftwareApplication",
-                    "description" : softwareMap.getAt(toolNameTask).toString()
+                    "description" : softwareMap.getAt(toolNameTask).toString(),
+                    "justtofind"  : "test"  
                 ]
+                println(createSoftwareFinal)
                 return createSoftwareFinal
             }
 
