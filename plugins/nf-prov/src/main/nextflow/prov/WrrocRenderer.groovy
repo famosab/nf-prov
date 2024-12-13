@@ -439,12 +439,6 @@ class WrrocRenderer implements Renderer {
                 if (metaYaml == null) {
                     return null
                 }
-                
-                // get ext properties from process
-                def processorConfig = process.getConfig()
-                def extProperties = processorConfig.ext as Map
-                // use either ext property 'name' or 'name' from meta.yaml
-                def toolNameTask = extProperties.containsKey('name') ? extProperties.get('name') as String : metaYaml.get('name')
 
                 def listOfToolMaps = []
                 metaYaml.get('tools')?.each { tool -> listOfToolMaps.add(tool as Map) }
