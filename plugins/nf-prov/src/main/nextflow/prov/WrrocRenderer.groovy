@@ -408,60 +408,68 @@ class WrrocRenderer implements Renderer {
 
         final wfSofwareApplications = nextflowProcesses
             .collect() { process ->
+                def metaYaml = readMetaYaml(process)
+                if (metaYaml == null) {
+                    return [
+                        "@id"    : "#" + process.ownerScript.toString(),
+                        "@type"  : "SoftwareApplication",
+                        "name"   : process.getName(),
+                    ]
+                }
+                
+                def toolNames = []
+                
+                metaYaml.get('tools')?.each { tool ->
+                    def entry = (tool as Map).entrySet().first()
+                    def toolName = entry.key as String
+                    toolNames << toolName
+                }
+                
                 [
-                    "@id"  : "#" + process.ownerScript.toString(),
-                    "@type": "SoftwareApplication",
-                    "name" : process.getName()
+                    "@id"    : "#" + process.ownerScript.toString(),
+                    "@type"  : "SoftwareApplication",
+                    "name"   : process.getName(),
+                    "hasPart": toolNames.isEmpty() ? null : toolNames.collect { name -> ["@id": name] }
                 ]
             }
 
-
         final perTool = nextflowProcesses
             .collect() { process ->
-                // read in meta.yaml file (nf-core style)
                 def metaYaml = readMetaYaml(process)
-                println(metaYaml)
+                if (metaYaml == null) {
+                    return null
+                }
+                
                 // get ext properties from process
                 def processorConfig = process.getConfig()
                 def extProperties = processorConfig.ext as Map
                 // use either ext property 'name' or 'name' from meta.yaml
                 def toolNameTask = extProperties.containsKey('name') ? extProperties.get('name') as String : metaYaml.get('name')
 
-                def listOfToolMaps = new ArrayList()
-                metaYaml.get('tools').each { tool -> listOfToolMaps.add( tool as Map ) }
+                def listOfToolMaps = []
+                metaYaml.get('tools')?.each { tool -> listOfToolMaps.add(tool as Map) }
 
-                // get descriptions for all tools used in process
-                // TODO: adapt so that multi-tool-processes get rendered seperately
-                // TODO: extract more information from meta.yaml
-                def softwareMap =  [:]
-                def listOfDescriptions = new ArrayList()
-                listOfToolMaps.each { toolMap ->
-                    toolMap.each { field -> 
-                        def fieldMap = field as Map
-                        field.iterator().each {entry -> 
-                            entry.iterator().each {entryField -> 
-                                def entryFieldMap = entryField.getAt("value") as Map
-                                listOfDescriptions.add(entryFieldMap.getAt("description"))
-                                }
-
-                        }
-                    }
-                    softwareMap[toolNameTask] = listOfDescriptions
+                def softwareMaps = listOfToolMaps.collect { toolMap ->
+                    def entry = (toolMap as Map).entrySet().first()
+                    def toolName = entry.key as String
+                    def toolDescription = (entry.value as Map)?.get('description') as String
+                    [(toolName): toolDescription]
                 }
 
-                def createSoftwareFinal = [
-                    "@id"         : toolNameTask,
-                    "@type"       : "SoftwareApplication",
-                    "description" : softwareMap.getAt(toolNameTask).toString(),
-                    "justtofind"  : "test"  
-                ]
-                println(createSoftwareFinal)
-                return createSoftwareFinal
-            }
+                // Create a list of SoftwareApplication entries
+                def softwareApplications = softwareMaps.collect { softwareMap ->
+                    def entry = (softwareMap as Map).entrySet().first()
+                    def toolName = entry.key as String
+                    [
+                        "@id"         : toolName,
+                        "@type"       : "SoftwareApplication",
+                        "name"        : toolName,
+                        "description" : entry.value?.toString() ?: ""
+                    ]
+                }
 
-        final wfToolDescriptions = perTool.collect()
-
-
+                return softwareApplications
+            }.findAll { it != null }.flatten()
 
         final howToSteps = nextflowProcesses
             .collect() { process ->
@@ -586,6 +594,7 @@ class WrrocRenderer implements Renderer {
                     "version"   : nextflowVersion
                 ],
                 *wfSofwareApplications,
+                *perTool,
                 *formalParameters,
                 [
                     "@id"  : "#${softwareApplicationId}",
@@ -632,7 +641,6 @@ class WrrocRenderer implements Renderer {
                 *uniqueInputOutputFiles,
                 *propertyValues,
                 license,
-                *wfToolDescriptions
             ].findAll { it != null }
         ]
 
