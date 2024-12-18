@@ -32,10 +32,9 @@ import groovy.transform.CompileStatic
 import nextflow.Session
 import nextflow.processor.TaskRun
 import nextflow.processor.*
-
 import org.yaml.snakeyaml.Yaml
 
-import org.apache.commons.io.FilenameUtils;
+import org.apache.commons.io.FilenameUtils
 
 /**
  * Renderer for the Provenance Run RO Crate format.
@@ -56,6 +55,8 @@ class WrrocRenderer implements Renderer {
 
     private LinkedHashMap agent
     private LinkedHashMap organization
+    // List of contactPoints (people, organizations) to be added to ro-crate-metadata.json
+    private List<LinkedHashMap> contactPoints = []
     private String publisherID
 
     private boolean overwrite
@@ -263,46 +264,46 @@ class WrrocRenderer implements Renderer {
                     "additionalType": "String",
                     // "defaultValue": "",
                     "conformsTo"    : ["@id": "https://bioschemas.org/profiles/FormalParameter/1.0-RELEASE"],
-                    "description"   : "",
-                    // TODO: apply only if type is Path
-                    // "encodingFormat": "text/plain",
+                    "description"   : null,
+                    "encodingFormat": getEncodingFormat(value),
                     // TODO: match to output if type is Path
                     // "workExample": ["@id": outputId],
                     "name"          : name,
                     // "valueRequired": "True"
-                ]
+                ].findAll { it.value != null }
             }
 
         final inputFiles = workflowInputMapping
             .collect { source, target ->
                 [
                     "@id"           : crateRootDir.relativize(target).toString(),
-                    "@type"         : "File",
+                    "@type"         : getType(source),
                     "name"          : target.name,
-                    "description"   : "",
-                    "encodingFormat": Files.probeContentType(source) ?: "",
-                    "fileType": "whatever",
+                    "description"   : null,
+                    "encodingFormat": getEncodingFormat(source, target),
+                    //"fileType": "whatever",
                     // TODO: apply if matching param is found
                     // "exampleOfWork": ["@id": paramId]
-                ]
+                ].findAll { it.value != null }
             }
 
         final outputFiles = workflowOutputs
             .collect { source, target ->
                 [
                     "@id"           : crateRootDir.relativize(target).toString(),
-                    "@type"         : "File",
+                    "@type"         : getType(source),
                     "name"          : target.name,
-                    "description"   : "",
-                    "encodingFormat": Files.probeContentType(target) ?: "",
+                    "description"   : null,
+                    "encodingFormat": getEncodingFormat(source, target),
                     // TODO: create FormalParameter for each output file?
                     // "exampleOfWork": {"@id": "#reversed"}
-                ]
+                ].findAll { it.value != null }
             }
 
         // Combine both, inputFiles and outputFiles into one list. Remove duplicates that occur when an intermediate
         // file is output of a task and input of another task.
-        Map<String, LinkedHashMap<String, String>> combinedInputOutputMap = [:]
+        //Map<String, LinkedHashMap<String, String>> combinedInputOutputMap = [:]
+        Map combinedInputOutputMap = [:]
 
         inputFiles.each { entry ->
             combinedInputOutputMap[entry['@id']] = entry
@@ -311,7 +312,7 @@ class WrrocRenderer implements Renderer {
         outputFiles.each { entry ->
             combinedInputOutputMap[entry['@id']] = entry
         }
-        List<LinkedHashMap<String, String>> uniqueInputOutputFiles = combinedInputOutputMap.values().toList()
+        List uniqueInputOutputFiles = combinedInputOutputMap.values().toList()
 
         final propertyValues = params
             .collect { name, value ->
@@ -389,7 +390,7 @@ class WrrocRenderer implements Renderer {
                     "agent"       : ["@id": agent.get("@id").toString()],
                     "object"      : objectFileIDs.collect(file -> ["@id": file]),
                     "result"      : resultFileIDs.collect(file -> ["@id": file]),
-                    "actionStatus": task.getExitStatus() == 0 ? "CompletedActionStatus" : "FailedActionStatus"
+                    "actionStatus": task.getExitStatus() == 0 ? "http://schema.org/CompletedActionStatus" : "http://schema.org/FailedActionStatus"
                 ]
 
                 // Add error message if there is one
@@ -521,8 +522,8 @@ class WrrocRenderer implements Renderer {
                         ["@id": "https://w3id.org/ro/wfrun/provenance/0.1"],
                         ["@id": "https://w3id.org/workflowhub/workflow-ro-crate/1.0"]
                     ],
-                    "name"       : "Workflow run of ${metadata.projectName}",
-                    "description": manifest.description ?: "",
+                    "name"       : "Workflow run of " + manifest.getName() ?: metadata.projectName,
+                    "description": manifest.description ?: null,
                     "hasPart"    : [
                         ["@id": metadata.projectName],
                         ["@id": "nextflow.config"],
@@ -563,9 +564,16 @@ class WrrocRenderer implements Renderer {
                 [
                     "@id"                : metadata.projectName,
                     "@type"              : ["File", "SoftwareSourceCode", "ComputationalWorkflow", "HowTo"],
-                    "encodingFormat"     : "application/nextflow",
-                    "name"               : metadata.projectName,
+                    "conformsTo"         : ["@id": "https://bioschemas.org/profiles/ComputationalWorkflow/1.0-RELEASE"],
+                    "name"               : manifest.getName() ?: metadata.projectName,
+                    "description"        : manifest.getDescription() ?: null,
                     "programmingLanguage": ["@id": "https://w3id.org/workflowhub/workflow-ro-crate#nextflow"],
+                    "creator"            : manifest.getAuthor() ?: null,
+                    "version"            : manifest.getVersion() ?: null,
+                    "license"            : manifest.getLicense() ?: null,
+                    "url"                : manifest.getHomePage() ?: null,
+                    "encodingFormat"     : "application/nextflow",
+                    "runtimePlatform"    : manifest.getNextflowVersion() ? "Nextflow " + manifest.getNextflowVersion() : null,
                     "hasPart"            : wfSofwareApplications.collect(sa ->
                         ["@id": sa["@id"]]
                     ),
@@ -578,7 +586,7 @@ class WrrocRenderer implements Renderer {
                     "step"               : howToSteps.collect(step ->
                         ["@id": step["@id"]]
                     ),
-                ],
+                ].findAll { it.value != null },
                 [
                     "@id"       : "https://w3id.org/workflowhub/workflow-ro-crate#nextflow",
                     "@type"     : "ComputerLanguage",
@@ -628,6 +636,7 @@ class WrrocRenderer implements Renderer {
                 ],
                 *[agent],
                 *[organization],
+                *contactPoints,
                 *controlActions,
                 *createActions,
                 configFile,
@@ -755,17 +764,27 @@ class WrrocRenderer implements Renderer {
      * @param params Nextflow parameters
      * @return       Map describing agent via '@id'. 'orcid' and 'name'
      */
-    static def LinkedHashMap parseAgentInfo(Map params) {
+    def LinkedHashMap parseAgentInfo(Map params) {
         final LinkedHashMap agent = new LinkedHashMap()
 
         if (! params.containsKey("agent"))
             return null
 
         Map agentMap = params["agent"] as Map
+
         agent.put("@id", agentMap.containsKey("orcid") ? agentMap.get("orcid") : "agent-1")
         agent.put("@type", "Person")
         if(agentMap.containsKey("name"))
             agent.put("name", agentMap.get("name"))
+
+        // Check for contact information
+        if(agentMap.containsKey("email") || agentMap.containsKey("phone")) {
+            // Add contact point to ro-crate-metadata.json
+            String contactPointID = parseContactPointInfo(agentMap)
+            if(contactPointID)
+                agent.put("contactPoint", ["@id": contactPointID ])
+
+        }
 
         return agent
     }
@@ -777,7 +796,7 @@ class WrrocRenderer implements Renderer {
      * @param params Nextflow parameters
      * @return       Map describing organization via '@id'. 'orcid' and 'name'
      */
-    static def LinkedHashMap parseOrganizationInfo(Map params) {
+    def LinkedHashMap parseOrganizationInfo(Map params) {
         final LinkedHashMap org = new LinkedHashMap()
 
         if (! params.containsKey("organization"))
@@ -789,7 +808,54 @@ class WrrocRenderer implements Renderer {
         if(orgMap.containsKey("name"))
             org.put("name", orgMap.get("name"))
 
+        // Check for contact information
+        if(orgMap.containsKey("email") || orgMap.containsKey("phone")) {
+            // Add contact point to ro-crate-metadata.json
+            String contactPointID = parseContactPointInfo(orgMap)
+            if(contactPointID)
+                org.put("contactPoint", ["@id": contactPointID ])
+        }
+
         return org
+    }
+
+
+    /**
+     * Parse information about contact point and add to contactPoints list.
+     *
+     * @param params Map describing an agent or organization
+     * @return       ID of the contactPoint
+     */
+    def String parseContactPointInfo(Map map) {
+
+        String contactPointID = ""
+        final LinkedHashMap contactPoint = new LinkedHashMap()
+
+        // Prefer email for the contact point ID
+        if(map.containsKey("email"))
+            contactPointID = "mailto:" + map.get("email")
+        else if(map.containsKey("phone"))
+            contactPointID = map.get("phone")
+        else
+            return null
+
+        contactPoint.put("@id", contactPointID)
+        contactPoint.put("@type", "ContactPoint")
+        if(map.containsKey("contactType"))
+            contactPoint.put("contactType", map.get("contactType"))
+        if(map.containsKey("email"))
+            contactPoint.put("email", map.get("email"))
+        if(map.containsKey("phone"))
+            contactPoint.put("phone", map.get("phone"))
+        if(map.containsKey("orcid"))
+            contactPoint.put("url", map.get("orcid"))
+        if(map.containsKey("orcid"))
+            contactPoint.put("url", map.get("orcid"))
+        if(map.containsKey("rar"))
+            contactPoint.put("url", map.get("rar"))
+
+        contactPoints.add(contactPoint)
+        return contactPointID
     }
 
 
@@ -849,5 +915,76 @@ class WrrocRenderer implements Renderer {
      */
     static def boolean isNested(Object obj) {
         return (obj instanceof Map || obj instanceof List)
+    }
+
+    /**
+     * Check if a Path is a file or a directory and return corresponding "@type"
+     *
+     * @param path The path to be checked
+     * @return type Either "File" or "Directory"
+     */
+    static def String getType(Path path) {
+        String type = "File"
+
+        if(path.isDirectory())
+            type = "Directory"
+
+        return type
+    }
+
+    /**
+     * Get the encodingFormat of a file as MIME Type.
+     *
+     * @param object An object that may be a file
+     * @return the MIME type of the object or null, if it's not a file.
+     */
+    static def String getEncodingFormat(Object object) {
+
+        // Check if the object is a string and convert it to a Path
+        if (object instanceof String) {
+            Path path = Paths.get((String) object);
+            return getEncodingFormat(path, null)
+        } else {
+            return null
+        }
+    }
+
+
+    /**
+     * Get the encodingFormat of a file as MIME Type.
+     * A file can exist at two places. At the source where Nextflow or the user stored the file,
+     * or in the RO-Crate (i.e. target) location. The method takes both locations as arguments, if one
+     * of the locations does not exist any more.
+     *
+     * @param source Path to file
+     * @param target Path to file
+     * @return the MIME type of the file or null, if it's not a file.
+     */
+    static def String getEncodingFormat(Path source, Path target) {
+        String mime = null
+
+        if(source && source.exists() && source.isFile())
+            mime = Files.probeContentType(source) ?: null
+        else if(target && target.exists() && target.isFile())
+            mime = Files.probeContentType(target) ?: null
+        else {
+            return mime
+        }
+
+        // It seems that YAML has a media type only since beginning of 2024
+        // Set this by hand if this is run on older systems:
+        // https://httptoolkit.com/blog/yaml-media-type-rfc/
+         if(!mime) {
+             String extension = null
+             if(source)
+                 extension = FilenameUtils.getExtension(source.toString())
+             else if(target)
+                 extension = FilenameUtils.getExtension(target.toString())
+
+             if(["yml", "yaml"].contains(extension))
+                mime = "application/yaml"
+         }
+
+        return mime
     }
 }
