@@ -418,6 +418,7 @@ class WrrocRenderer implements Renderer {
                     ]
                 }
                 
+                def moduleName = metaYaml.get('name') as String
                 def toolNames = []
                 
                 metaYaml.get('tools')?.each { tool ->
@@ -430,7 +431,7 @@ class WrrocRenderer implements Renderer {
                     "@id"    : "#" + process.ownerScript.toString(),
                     "@type"  : "SoftwareApplication",
                     "name"   : process.getName(),
-                    "hasPart": toolNames.isEmpty() ? null : toolNames.collect { name -> ["@id": name] }
+                    "hasPart": toolNames.isEmpty() ? null : toolNames.collect { name -> ["@id": moduleName + '-' + name] }
                 ]
             }
 
@@ -441,6 +442,7 @@ class WrrocRenderer implements Renderer {
                     return null
                 }
 
+                def moduleName = metaYaml.get('name') as String
                 def listOfToolMaps = []
                 metaYaml.get('tools')?.each { tool -> listOfToolMaps.add(tool as Map) }
 
@@ -456,7 +458,7 @@ class WrrocRenderer implements Renderer {
                     def entry = (softwareMap as Map).entrySet().first()
                     def toolName = entry.key as String
                     [
-                        "@id"         : toolName,
+                        "@id"         : moduleName + '-' + toolName,
                         "@type"       : "SoftwareApplication",
                         "name"        : toolName,
                         "description" : entry.value?.toString() ?: ""
